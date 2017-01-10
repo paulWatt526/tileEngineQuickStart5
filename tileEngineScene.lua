@@ -26,6 +26,7 @@ local ENVIRONMENT = {
 }
 
 local CAMERA_SPEED      = 4 / 1000          -- Camera speed, 4 tiles per second
+local MOVING_LIGHT_SPEED= 4 / 1000          -- Moving light speed, 4 tiles per second
 local ROW_COUNT         = #ENVIRONMENT      -- Row count of the environment
 local COLUMN_COUNT      = #ENVIRONMENT[1]   -- Column count of the environment
 local WALL_LAYER_COUNT  = 4                 -- The number of extruded wall layers
@@ -40,6 +41,9 @@ local topLightId                            -- Will track the ID of the top ligh
 local bottomLightId                         -- Will track the ID of the bottom light
 local leftLightId                           -- Will track the ID of the left light
 local rightLightId                          -- Will track the ID of the right light
+local movingLightId                         -- Will track the ID of the moving light
+local movingLightDirection                  -- Tracks the direction of the moving light
+local movingLightXPos                       -- Tracks the continous position of the moving light
 
 -- -----------------------------------------------------------------------------------
 -- This will load in the example sprite sheet.  Replace this with the sprite
@@ -70,23 +74,51 @@ stateMachine.init = function()
     -- Set initial state
     stateMachine.curState = 1
 
+    -- Set the initial position and direction of the moving light
+    movingLightDirection = "left"
+    movingLightXPos = 14.5
+
     -- Add a light at the top part of the room.
     topLightId = lightingModel.addLight({
         row=5,column=8,r=1,g=1,b=0.7,intensity=0.75,radius=9
     })
 end
+stateMachine.update = function(deltaTime)
+    local xDelta = MOVING_LIGHT_SPEED * deltaTime
+    if movingLightDirection == "right" then
+        movingLightXPos = movingLightXPos + xDelta
+        if movingLightXPos > 14.5 then
+            movingLightDirection = "left"
+            movingLightXPos = 14.5 - (movingLightXPos - 14.5)
+        end
+    else
+        movingLightXPos = movingLightXPos - xDelta
+        if movingLightXPos < 0.5 then
+            movingLightDirection = "right"
+            movingLightXPos = 0.5 + (0.5 - movingLightXPos)
+        end
+    end
+    if movingLightId ~= nil then
+        lightingModel.updateLight({
+            lightId = movingLightId,
+            newRow = 8,
+            newColumn = math.floor(movingLightXPos + 0.5)
+        })
+    end
+end
 stateMachine.nextState = function()
     stateMachine.curState = stateMachine.curState + 1
-    if stateMachine.curState > 4 then
+    if stateMachine.curState > 5 then
         stateMachine.curState = 1
     end
 
     if stateMachine.curState == 1 then
-        lightingModel.removeLight(leftLightId)
-        leftLightId = nil
+        lightingModel.removeLight(movingLightId)
+        movingLightId = nil
         topLightId = lightingModel.addLight({
             row=5,column=8,r=1,g=1,b=0.7,intensity=0.75,radius=9
         })
+        lightingModel.setUseTransitioners(false)
     end
 
     if stateMachine.curState == 2 then
@@ -111,6 +143,17 @@ stateMachine.nextState = function()
         leftLightId = lightingModel.addLight({
             row=8,column=5,r=1,g=0,b=0,intensity=0.75,radius=9
         })
+    end
+
+    if stateMachine.curState == 5 then
+        lightingModel.removeLight(leftLightId)
+        leftLightId = nil
+        movingLightId = lightingModel.addLight({
+            row=8,
+            column=math.floor(movingLightXPos + 0.5),
+            r=1,g=1,b=0.7,intensity=0.75,radius=9
+        })
+        lightingModel.setUseTransitioners(true)
     end
 end
 
@@ -232,6 +275,9 @@ local function onFrame(event)
             end
         end
         camera.setLocation(curXPos, camera.getY())
+
+        -- Update the state machine
+        stateMachine.update(deltaTime)
 
         -- Update the lighting model passing the amount of time that has passed since
         -- the last frame.
